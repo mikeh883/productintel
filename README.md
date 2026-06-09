@@ -72,14 +72,21 @@ interest lives.
 
 ## Getting started
 
-Both options need a model provider API key in `.env`: a Google AI Studio key
-(`GOOGLE_API_KEY`) for the default Gemini models, or an Anthropic key
-(`ANTHROPIC_API_KEY`) if you switch `MODEL`/`EMBED_MODEL` to Claude/another embedding
-provider.
+Both options need a model provider API key in `.env`. **The default setup runs for
+free:** the scaffold uses Google's Gemini Flash models, which have a permanent free
+tier on [Google AI Studio](https://aistudio.google.com/apikey) — generous enough for
+local development and the sample corpus, with no billing setup. Create a free key, then:
 
 ```bash
-cp .env.example .env    # add your key
+cp .env.example .env    # then set GOOGLE_API_KEY=...
 ```
+
+> **Want Claude or another provider instead?** Change `MODEL`/`EMBED_MODEL` in `.env` to
+> LiteLLM identifiers (e.g. `anthropic/claude-haiku-4-5`) and set that provider's key.
+> Two things to know: chat subscriptions (Claude Pro/Max, Gemini Advanced) do **not**
+> grant API access — programmatic usage is billed per token, separately from any
+> subscription. And Anthropic has no embeddings API, so an all-Claude setup still needs a
+> separate embeddings provider; the all-Gemini default avoids that.
 
 ### Option A — Docker (recommended, fully reproducible)
 
