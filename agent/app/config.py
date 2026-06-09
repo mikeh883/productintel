@@ -13,9 +13,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://productintel:productintel@localhost:5432/productintel"
 
     # LiteLLM model identifiers.
-    model: str = "gemini/gemini-2.0-flash"
-    embed_model: str = "gemini/text-embedding-004"
-    # Embedding dimension MUST match embed_model. text-embedding-004 = 768.
+    model: str = "gemini/gemini-2.5-flash"
+    embed_model: str = "gemini/gemini-embedding-001"
+    # Embedding dimension MUST match the embed_model output (we pass `dimensions`
+    # explicitly; gemini-embedding-001 defaults to 3072 otherwise).
     # Changing this requires a new migration for the document_chunks.embedding column.
     embed_dim: int = 768
 
