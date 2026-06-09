@@ -23,5 +23,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     app_name: str = "productintel"
 
+    # Callback seam (ADR 0016). The budget is ENFORCED: once a session's
+    # cumulative LLM tokens cross it, further model calls are short-circuited.
+    session_token_budget: int = 100_000
+    # Tool results larger than this are truncated before reaching the model —
+    # the descendant of AgentWeave's pointer/lazy-load cost pattern.
+    max_tool_result_chars: int = 8_000
+
 
 settings = Settings()

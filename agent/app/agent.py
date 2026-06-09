@@ -7,6 +7,7 @@ os.environ.setdefault("ADK_SUPPRESS_GEMINI_LITELLM_WARNINGS", "true")
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 
+from . import seam
 from .config import settings
 from .retrieval import search
 
@@ -36,9 +37,14 @@ If the knowledge base does not contain the answer, say so plainly rather than gu
 
 
 # Model is wrapped in LiteLlm so the provider is swappable (ADR 0006).
+# All model and tool calls pass through the callback seam (ADR 0016).
 knowledge_agent = LlmAgent(
     name="knowledge_agent",
     model=LiteLlm(model=settings.model),
     instruction=INSTRUCTION,
     tools=[search_knowledge],
+    before_model_callback=seam.before_model,
+    after_model_callback=seam.after_model,
+    before_tool_callback=seam.before_tool,
+    after_tool_callback=seam.after_tool,
 )

@@ -19,3 +19,4 @@ Significant decisions for ProductIntel, in the format described by [ADR 0001](00
 | [0013](0013-observability-otel-langfuse.md) | OpenTelemetry and Langfuse via ADK callbacks | Accepted |
 | [0014](0014-defer-auth-jwt-bearer.md) | Defer authentication for v0; JWT bearer when introduced | Accepted |
 | [0015](0015-knowledge-first-vertical-slice.md) | Knowledge as the first vertical slice | Accepted |
+| [0016](0016-callback-seam-guardrails-tracing.md) | Callback seam for enforced guardrails and tracing | Accepted |
