@@ -30,5 +30,12 @@ class Settings(BaseSettings):
     # the descendant of AgentWeave's pointer/lazy-load cost pattern.
     max_tool_result_chars: int = 8_000
 
+    # Langfuse export from the seam (ADR 0013). Off unless both keys are set;
+    # when on, every model/tool call also streams to the Langfuse project,
+    # grouped one trace per agent invocation and one session per chat session.
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://us.cloud.langfuse.com"
+
 
 settings = Settings()
