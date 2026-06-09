@@ -132,6 +132,12 @@ The reasoning behind every stack and architecture choice lives in
 split) and [ADR 0003](docs/adr/0003-google-adk-agent-framework.md) (why ADK over the
 original framework).
 
+For the narrative version, read
+[**Why I rebuilt ProductIntel on Google's ADK**](docs/why-i-rebuilt-on-adk.md):
+the data-first vs code-first fork, what the original framework taught that this
+rebuild keeps, and why enforced guardrails in the callback layer were the upgrade
+that mattered most.
+
 ## Roadmap
 
 - **Work slice** (story triage): the first multi-agent coordination, with one agent
