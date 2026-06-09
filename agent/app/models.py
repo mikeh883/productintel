@@ -27,6 +27,26 @@ class TraceEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Story(Base):
+    """A unit of incoming work: a bug report, feature request, or chore.
+
+    Stories arrive raw (title + body, status 'untriaged'). The work agent
+    triages them by setting story_type, priority, and a rationale.
+    """
+
+    __tablename__ = "stories"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(512))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="untriaged", index=True)  # 'untriaged' | 'triaged'
+    story_type: Mapped[str | None] = mapped_column(String(16), nullable=True)  # 'bug' | 'feature' | 'chore'
+    priority: Mapped[str | None] = mapped_column(String(4), nullable=True)  # 'P0'..'P3'
+    triage_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Document(Base):
     __tablename__ = "documents"
 
