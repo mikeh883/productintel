@@ -17,17 +17,30 @@ It is developed in the open as a portfolio and learning project.
 
 ## Status
 
-Early, and intentionally so. One vertical slice is built: **Knowledge**, a
-retrieval-augmented chat over a document corpus. This is not production software.
-Authentication and observability are decided but not yet built (see the ADRs). Every
-architecture decision is recorded under [`docs/adr/`](docs/adr/) as it is made.
+Early, and intentionally so. Two vertical slices are built: **Knowledge**, a
+retrieval-augmented chat over a document corpus, and **Work**, a story backlog
+managed by a triage agent behind the project's first multi-agent coordinator.
+Tracing and enforced guardrails run through a callback seam on every call. This is
+not production software. Authentication and external observability export are
+decided but not yet built (see the ADRs). Every architecture decision is recorded
+under [`docs/adr/`](docs/adr/) as it is made.
 
 ## What it does today
 
-Ask a question in the chat UI. The agent searches the knowledge base for the most
-relevant document chunks, answers using only what it finds, cites the documents it used,
-and streams the response token by token. If the knowledge base does not contain the
-answer, it says so rather than guessing.
+Ask a question in the chat UI. A coordinator agent routes it to the right specialist:
+
+- **Knowledge questions** go to the knowledge agent, which searches the knowledge base
+  for the most relevant document chunks, answers using only what it finds, and cites
+  the documents it used. If the knowledge base does not contain the answer, it says so
+  rather than guessing.
+- **Backlog requests** go to the work agent. Paste a raw bug report or feature request
+  and it files a story; ask it to triage the backlog and it classifies each story
+  (bug, feature, or chore), assigns a priority (P0 to P3), and records its rationale.
+
+The routing itself is model-driven, using ADK's agent transfer
+([ADR 0017](docs/adr/0017-coordinator-llm-delegation.md)), and every model and tool
+call from every agent is traced and budget-checked by the callback seam
+([ADR 0016](docs/adr/0016-callback-seam-guardrails-tracing.md)).
 
 ## Architecture
 
@@ -74,7 +87,7 @@ interest lives.
 
 Both options need a model provider API key in `.env`. **The default setup runs for
 free:** the scaffold uses Google's Gemini Flash models, which have a permanent free
-tier on [Google AI Studio](https://aistudio.google.com/apikey) — generous enough for
+tier on [Google AI Studio](https://aistudio.google.com/apikey), generous enough for
 local development and the sample corpus, with no billing setup. Create a free key, then:
 
 ```bash
@@ -84,19 +97,20 @@ cp .env.example .env    # then set GOOGLE_API_KEY=...
 > **Want Claude or another provider instead?** Change `MODEL`/`EMBED_MODEL` in `.env` to
 > LiteLLM identifiers (e.g. `anthropic/claude-haiku-4-5`) and set that provider's key.
 > Two things to know: chat subscriptions (Claude Pro/Max, Gemini Advanced) do **not**
-> grant API access — programmatic usage is billed per token, separately from any
+> grant API access: programmatic usage is billed per token, separately from any
 > subscription. And Anthropic has no embeddings API, so an all-Claude setup still needs a
 > separate embeddings provider; the all-Gemini default avoids that.
 
-### Option A — Docker (recommended, fully reproducible)
+### Option A: Docker (recommended, fully reproducible)
 
 ```bash
 make up        # build + start Postgres and the agent service (applies migrations)
 make ingest    # embed the sample corpus/ into the knowledge base
+make seed      # seed a demo backlog of untriaged stories for the work agent
 make web       # run the Next.js chat UI at http://localhost:3000
 ```
 
-### Option B — local Postgres, no Docker
+### Option B: local Postgres, no Docker
 
 Requires a local PostgreSQL with the `pgvector` extension available, plus `uv` and Node.
 
@@ -140,10 +154,12 @@ that mattered most.
 
 ## Roadmap
 
-- **Work slice** (story triage): the first multi-agent coordination, with one agent
-  routing between answering from knowledge and acting on work items.
-- **Callback layer**: wire OpenTelemetry + Langfuse tracing and enforced guardrails
-  through ADK callbacks ([ADR 0013](docs/adr/0013-observability-otel-langfuse.md)).
+- **Token-level streaming**: ADK currently emits the final answer as one SSE event;
+  true incremental streaming uses ADK's streaming run config.
+- **Observability export**: OpenTelemetry + Langfuse attached to the existing callback
+  seam ([ADR 0013](docs/adr/0013-observability-otel-langfuse.md)).
+- **Durable sessions**: conversations currently live in memory; a database-backed
+  session service survives restarts.
 - **Authentication**: JWT bearer when the product grows past a single user
   ([ADR 0014](docs/adr/0014-defer-auth-jwt-bearer.md)).
 
