@@ -12,11 +12,15 @@ ADK callback contract (verified against google-adk 2.2.0):
   before_tool(tool, args, ctx) -> None to proceed | dict to skip tool with result
   after_tool(tool, args, ctx, result) -> None | replacement dict
 
-Langfuse contract (verified against langfuse 4.7.1): observations created with
-an explicit trace_context land in that trace; create_trace_id(seed=...) is
-deterministic, so one invocation = one trace; propagate_attributes stamps
-session.id on observations created inside its context; export runs on a
-background thread and degrades to logged warnings if the host is unreachable.
+Langfuse export (verified against langfuse 4.7.1, ADR 0013): constructing the
+Langfuse client registers a global OpenTelemetry tracer provider, which ADK's
+native instrumentation (scope 'gcp.vertex.agent') exports through automatically:
+one nested trace per invocation (invoke_agent -> call_llm / execute_tool), with
+token usage attached. LiteLLM's duplicate spans (scope 'litellm') are blocked so
+tokens are not double-counted. The seam's own export role is what ADK cannot
+know: stamping the chat session id onto the trace (propagate_attributes sets it
+on the currently active ADK span) and emitting guardrail events. Export runs on
+a background thread and degrades to logged warnings if the host is unreachable.
 """
 
 import asyncio
@@ -42,50 +46,34 @@ TOKENS_USED_KEY = "seam:tokens_used"
 _model_starts: dict[str, float] = {}
 _tool_starts: dict[str, float] = {}
 
-# Open Langfuse observations, keyed like the start dicts: started in before_*,
-# ended in after_*. None client = exporter off (no keys configured).
+# None client = exporter off (no keys configured). Constructing the client is
+# what turns on export of ADK's native spans (see module docstring).
 _langfuse: Optional[Langfuse] = (
     Langfuse(
         public_key=settings.langfuse_public_key,
         secret_key=settings.langfuse_secret_key,
-        host=settings.langfuse_host,
+        base_url=settings.langfuse_base_url,
+        # ADK 2.2 emits each model call twice while it migrates to the GenAI
+        # semantic conventions: a legacy 'call_llm' span and a semconv
+        # 'generate_content {model}' span with the same usage. Export only one
+        # or Langfuse double-counts tokens. call_llm is kept because it parents
+        # under invoke_agent, preserving the per-agent hierarchy in the UI.
+        should_export_span=lambda span: not span.name.startswith("generate_content"),
     )
     if settings.langfuse_public_key and settings.langfuse_secret_key
     else None
 )
-_model_observations: dict[str, Any] = {}
-_tool_observations: dict[str, Any] = {}
-
-# Cap prompt/result payloads sent to Langfuse; full text stays available locally.
-LANGFUSE_PAYLOAD_CHARS = 4_000
 
 
-def _excerpt(value: Any) -> str:
-    text = str(value)
-    if len(text) > LANGFUSE_PAYLOAD_CHARS:
-        return text[:LANGFUSE_PAYLOAD_CHARS] + " ...[truncated for export]"
-    return text
-
-
-def _last_message_text(llm_request: LlmRequest) -> str:
-    for content in reversed(llm_request.contents or []):
-        texts = [part.text for part in (content.parts or []) if getattr(part, "text", None)]
-        if texts:
-            return _excerpt(" ".join(texts))
-    return ""
-
-
-def _response_text(llm_response: LlmResponse) -> str:
-    if llm_response.content and llm_response.content.parts:
-        texts = [part.text for part in llm_response.content.parts if getattr(part, "text", None)]
-        if texts:
-            return _excerpt(" ".join(texts))
-    return ""
-
-
-def _trace_context(invocation_id: str) -> dict[str, str]:
-    # Deterministic: every callback in one ADK invocation joins the same trace.
-    return {"trace_id": Langfuse.create_trace_id(seed=invocation_id)}
+def _stamp_session(session_id: str) -> None:
+    """Mark the currently active ADK span (and the trace) with the chat session."""
+    if _langfuse is None:
+        return
+    try:
+        with propagate_attributes(session_id=session_id, trace_name="chat-turn"):
+            pass
+    except Exception as exc:  # tracing must never break the agent
+        print(f"[seam] langfuse session stamp failed: {exc}")
 
 BUDGET_EXHAUSTED_MESSAGE = (
     "This session has reached its token budget and cannot make further model "
@@ -123,13 +111,12 @@ async def before_model(
         )
         if _langfuse:
             try:
-                with propagate_attributes(session_id=callback_context.session.id):
-                    _langfuse.create_event(
-                        trace_context=_trace_context(callback_context.invocation_id),
-                        name="token_budget_exhausted",
-                        level="WARNING",
-                        metadata={"tokens_used": str(used), "budget": str(settings.session_token_budget)},
-                    )
+                # No trace_context: the event nests into ADK's active trace.
+                _langfuse.create_event(
+                    name="token_budget_exhausted",
+                    level="WARNING",
+                    metadata={"tokens_used": str(used), "budget": str(settings.session_token_budget)},
+                )
             except Exception as exc:  # tracing must never break the agent
                 print(f"[seam] langfuse event failed: {exc}")
         return LlmResponse(
@@ -139,19 +126,7 @@ async def before_model(
         )
 
     _model_starts[callback_context.invocation_id] = time.monotonic()
-    if _langfuse:
-        try:
-            with propagate_attributes(
-                session_id=callback_context.session.id, trace_name="chat-turn"
-            ):
-                _model_observations[callback_context.invocation_id] = _langfuse.start_observation(
-                    trace_context=_trace_context(callback_context.invocation_id),
-                    as_type="generation",
-                    name=f"{callback_context.agent_name}.model",
-                    input=_last_message_text(llm_request),
-                )
-        except Exception as exc:
-            print(f"[seam] langfuse generation start failed: {exc}")
+    _stamp_session(callback_context.session.id)
     return None
 
 
@@ -171,22 +146,6 @@ async def after_model(
 
     used = callback_context.state.get(TOKENS_USED_KEY, 0) + input_tokens + output_tokens
     callback_context.state[TOKENS_USED_KEY] = used
-
-    observation = _model_observations.pop(callback_context.invocation_id, None)
-    if observation is not None:
-        try:
-            observation.update(
-                model=llm_response.model_version or settings.model,
-                usage_details={"input": input_tokens, "output": output_tokens},
-                output=_response_text(llm_response),
-                metadata={
-                    "finish_reason": str(llm_response.finish_reason),
-                    "session_tokens_used": str(used),
-                },
-            )
-            observation.end()
-        except Exception as exc:
-            print(f"[seam] langfuse generation end failed: {exc}")
 
     await _record_async(
         TraceEvent(
@@ -210,20 +169,8 @@ async def after_model(
 async def before_tool(
     tool: BaseTool, args: dict[str, Any], tool_context: ToolContext
 ) -> Optional[dict]:
-    key = f"{tool_context.invocation_id}:{tool.name}"
-    _tool_starts[key] = time.monotonic()
-    if _langfuse:
-        try:
-            with propagate_attributes(session_id=tool_context.session.id):
-                _tool_observations[key] = _langfuse.start_observation(
-                    trace_context=_trace_context(tool_context.invocation_id),
-                    as_type="tool",
-                    name=tool.name,
-                    input=_excerpt(args),
-                    metadata={"agent": tool_context.agent_name},
-                )
-        except Exception as exc:
-            print(f"[seam] langfuse tool start failed: {exc}")
+    _tool_starts[f"{tool_context.invocation_id}:{tool.name}"] = time.monotonic()
+    _stamp_session(tool_context.session.id)
     return None
 
 
@@ -233,8 +180,7 @@ async def after_tool(
     tool_context: ToolContext,
     tool_response: dict,
 ) -> Optional[dict]:
-    key = f"{tool_context.invocation_id}:{tool.name}"
-    start = _tool_starts.pop(key, None)
+    start = _tool_starts.pop(f"{tool_context.invocation_id}:{tool.name}", None)
     duration_ms = int((time.monotonic() - start) * 1000) if start else None
 
     # Cost-control cap: never let a tool flood the context window. This is
@@ -251,17 +197,6 @@ async def after_tool(
                 "chars — narrow the query to retrieve less at once]"
             ),
         }
-
-    observation = _tool_observations.pop(key, None)
-    if observation is not None:
-        try:
-            observation.update(
-                output=_excerpt(result_repr),
-                metadata={"result_chars": str(len(result_repr)), "truncated": str(truncated)},
-            )
-            observation.end()
-        except Exception as exc:
-            print(f"[seam] langfuse tool end failed: {exc}")
 
     await _record_async(
         TraceEvent(

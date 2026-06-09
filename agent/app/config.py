@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,12 +31,16 @@ class Settings(BaseSettings):
     # the descendant of AgentWeave's pointer/lazy-load cost pattern.
     max_tool_result_chars: int = 8_000
 
-    # Langfuse export from the seam (ADR 0013). Off unless both keys are set;
-    # when on, every model/tool call also streams to the Langfuse project,
-    # grouped one trace per agent invocation and one session per chat session.
+    # Langfuse export (ADR 0013). Off unless both keys are set; when on, ADK's
+    # native OpenTelemetry spans flow to the Langfuse project, one trace per
+    # agent invocation, grouped into one Langfuse session per chat session.
+    # LANGFUSE_BASE_URL is the SDK's own variable name; LANGFUSE_HOST also works.
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
-    langfuse_host: str = "https://us.cloud.langfuse.com"
+    langfuse_base_url: str = Field(
+        "https://us.cloud.langfuse.com",
+        validation_alias=AliasChoices("LANGFUSE_BASE_URL", "LANGFUSE_HOST"),
+    )
 
 
 settings = Settings()

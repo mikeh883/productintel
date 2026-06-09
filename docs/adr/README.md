@@ -21,3 +21,4 @@ Significant decisions for ProductIntel, in the format described by [ADR 0001](00
 | [0015](0015-knowledge-first-vertical-slice.md) | Knowledge as the first vertical slice | Accepted |
 | [0016](0016-callback-seam-guardrails-tracing.md) | Callback seam for enforced guardrails and tracing | Accepted |
 | [0017](0017-coordinator-llm-delegation.md) | Coordinator agent with LLM-driven delegation | Accepted |
+| [0018](0018-adk-native-otel-langfuse-traces.md) | ADK native OpenTelemetry spans own the Langfuse trace structure | Accepted |
