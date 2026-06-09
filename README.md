@@ -1,68 +1,145 @@
 # ProductIntel
 
-An AI-native operations platform, rebuilt from the ground up on **Google's Agent Development Kit (ADK)**.
+> An AI-native operations platform, reimagined on Google's Agent Development Kit (ADK).
 
-This is the production-oriented reimagining of [ProductIntel](https://productintel.io). The original codebase (`productbrain`) was a learning project and MVP that grew a bespoke agent framework (AgentWeave) alongside a full Next.js product. This repo keeps the *spirit* of that work (knowledge as the context engine, AI assistance at every decision point, a unified artifact model) but starts fresh on an industry-standard agent stack, with deliberate, documented architecture decisions.
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Status: early](https://img.shields.io/badge/status-early%20%2F%20WIP-orange)
+![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB)
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
 
-## Why a rebuild
+ProductIntel is a workspace where product, knowledge, and support work share one
+foundation, and AI assistance shows up at every decision point. This repository is a
+ground-up rebuild of an earlier prototype (`productbrain`) on an industry-standard agent
+stack: the bespoke agent framework is replaced by Google ADK, and the choices are
+deliberately the kind any team would recognize.
 
-The original taught the hard parts: agent orchestration, retrieval, the product itself. This version trades the home-grown framework for the tooling enterprises actually run, so the architecture is translatable across companies and the decisions are ones anyone in the field would recognize.
-
-## Architecture
-
-A polyglot, service-oriented system, because ADK is an agent runtime rather than a web framework:
-
-- **`web/`** — Next.js + React + TypeScript + Tailwind frontend
-- **`agent/`** — Python ADK agents served over FastAPI
-- **PostgreSQL + pgvector** — relational data and embeddings in one store
-
-The interesting engineering lives in the seam between the frontend and the agent service: streaming agent events to the UI, and the ADK callback layer where observability, guardrails, and cost control plug in.
-
-## Stack
-
-| Layer | Choice |
-|---|---|
-| Agent runtime | Google ADK |
-| Language / deps | Python 3.12 + uv |
-| API layer | FastAPI |
-| Model access | LiteLLM (provider-agnostic: Gemini or Claude) |
-| Data layer | SQLAlchemy 2.0 + Alembic |
-| Database | PostgreSQL + pgvector |
-| Frontend | Next.js + React + TypeScript + Tailwind |
-| Transport | REST + Server-Sent Events (streaming) |
-| Packaging | Docker + Compose |
-| Observability | OpenTelemetry + Langfuse (via ADK callbacks) |
-
-Each choice is recorded as an Architecture Decision Record under [`docs/adr/`](docs/adr/).
-
-## Getting started
-
-Prerequisites: Docker, Node 20+, and a model provider API key (Google or Anthropic).
-
-```bash
-cp .env.example .env          # add GOOGLE_API_KEY or ANTHROPIC_API_KEY
-make up                       # build + start Postgres and the agent service (runs migrations)
-make ingest                   # embed the sample corpus/ into the knowledge base
-make web                      # run the Next.js chat UI at http://localhost:3000
-```
-
-The agent service listens on `http://localhost:8000` (`/health`, `/chat`). The web app
-proxies chat to it and streams the response. See `agent/README.md` for running the
-backend without Docker, and a note on ADK version differences.
-
-## Layout
-
-```
-web/      Next.js + React + TypeScript chat UI (ADR 0009)
-agent/    Python ADK agents over FastAPI, SQLAlchemy + Alembic (ADR 0002-0008)
-corpus/   Sample Markdown documents to ingest
-docs/adr/ Architecture Decision Records
-```
+It is developed in the open as a portfolio and learning project.
 
 ## Status
 
-Early. The first slice is **Knowledge**: retrieval-augmented chat over a document corpus, built as a single ADK agent with a pgvector retrieval tool. Work (story triage) follows, and is where the first multi-agent coordination appears.
+Early, and intentionally so. One vertical slice is built: **Knowledge**, a
+retrieval-augmented chat over a document corpus. This is not production software.
+Authentication and observability are decided but not yet built (see the ADRs). Every
+architecture decision is recorded under [`docs/adr/`](docs/adr/) as it is made.
+
+## What it does today
+
+Ask a question in the chat UI. The agent searches the knowledge base for the most
+relevant document chunks, answers using only what it finds, cites the documents it used,
+and streams the response token by token. If the knowledge base does not contain the
+answer, it says so rather than guessing.
+
+## Architecture
+
+ADK is a Python agent runtime, not a web framework, so ProductIntel is a small polyglot
+system rather than a monolith:
+
+```
+   ┌───────────────┐     HTTP + SSE      ┌────────────────────────┐
+   │   web/        │ ──────────────────▶ │   agent/               │
+   │   Next.js UI  │ ◀────────────────── │   Google ADK + FastAPI │
+   └───────────────┘   streamed tokens   └───────────┬────────────┘
+                                                      │ SQLAlchemy
+                                                      ▼
+                                          ┌────────────────────────┐
+                                          │  PostgreSQL + pgvector  │
+                                          └────────────────────────┘
+```
+
+- **`web/`** renders the UI and proxies chat to the agent service; it never imports
+  agent code.
+- **`agent/`** hosts the ADK agent and its retrieval tool behind a small FastAPI surface
+  (`/health`, `/chat`).
+- **PostgreSQL + pgvector** stores documents, chunks, and embeddings in one place.
+
+The seam between the frontend and the agent service (streaming, and the ADK callback
+layer where observability and guardrails plug in) is where most of the engineering
+interest lives.
+
+## Stack
+
+| Layer | Choice | Decision |
+|---|---|---|
+| Agent runtime | Google ADK | [ADR 0003](docs/adr/0003-google-adk-agent-framework.md) |
+| Language / deps | Python 3.12 + uv | [ADR 0004](docs/adr/0004-python-and-uv.md) |
+| API layer | FastAPI | [ADR 0005](docs/adr/0005-fastapi-api-layer.md) |
+| Model access | LiteLLM (Gemini or Claude) | [ADR 0006](docs/adr/0006-litellm-provider-agnostic-models.md) |
+| Data layer | SQLAlchemy 2.0 + Alembic | [ADR 0008](docs/adr/0008-sqlalchemy-alembic-data-layer.md) |
+| Database | PostgreSQL + pgvector | [ADR 0007](docs/adr/0007-postgres-pgvector-datastore.md) |
+| Frontend | Next.js + React + TypeScript + Tailwind | [ADR 0009](docs/adr/0009-reuse-nextjs-frontend.md) |
+| Transport | REST + Server-Sent Events | [ADR 0010](docs/adr/0010-sse-streaming-transport.md) |
+| Packaging | Docker + Compose | [ADR 0012](docs/adr/0012-docker-compose-packaging.md) |
+
+## Getting started
+
+Both options need a model provider API key in `.env`: a Google AI Studio key
+(`GOOGLE_API_KEY`) for the default Gemini models, or an Anthropic key
+(`ANTHROPIC_API_KEY`) if you switch `MODEL`/`EMBED_MODEL` to Claude/another embedding
+provider.
+
+```bash
+cp .env.example .env    # add your key
+```
+
+### Option A — Docker (recommended, fully reproducible)
+
+```bash
+make up        # build + start Postgres and the agent service (applies migrations)
+make ingest    # embed the sample corpus/ into the knowledge base
+make web       # run the Next.js chat UI at http://localhost:3000
+```
+
+### Option B — local Postgres, no Docker
+
+Requires a local PostgreSQL with the `pgvector` extension available, plus `uv` and Node.
+
+```bash
+createdb productintel
+
+cd agent
+uv venv --python 3.12 && uv pip install -e .
+export DATABASE_URL=postgresql+psycopg://localhost:5432/productintel
+uv run alembic upgrade head            # creates the vector extension + tables
+uv run python -m app.ingest ../corpus  # needs a model key for embeddings
+uv run uvicorn app.main:app --reload   # agent service on :8000
+
+cd ../web && npm install && npm run dev # UI on :3000
+```
+
+Then open http://localhost:3000.
+
+## Project layout
+
+```
+web/        Next.js + React + TypeScript chat UI
+agent/      Python ADK agents over FastAPI; SQLAlchemy + Alembic; LiteLLM
+corpus/     Sample Markdown documents to ingest
+docs/adr/   Architecture Decision Records (the reasoning behind every choice)
+```
+
+## Architecture decisions
+
+The reasoning behind every stack and architecture choice lives in
+[`docs/adr/`](docs/adr/) as numbered, immutable records. Good entry points:
+[ADR 0002](docs/adr/0002-polyglot-service-architecture.md) (why a polyglot service
+split) and [ADR 0003](docs/adr/0003-google-adk-agent-framework.md) (why ADK over the
+original framework).
+
+## Roadmap
+
+- **Work slice** (story triage): the first multi-agent coordination, with one agent
+  routing between answering from knowledge and acting on work items.
+- **Callback layer**: wire OpenTelemetry + Langfuse tracing and enforced guardrails
+  through ADK callbacks ([ADR 0013](docs/adr/0013-observability-otel-langfuse.md)).
+- **Authentication**: JWT bearer when the product grows past a single user
+  ([ADR 0014](docs/adr/0014-defer-auth-jwt-bearer.md)).
 
 ## Relationship to `productbrain`
 
-`productbrain` remains as the original learning project and MVP. This repo is the forward-looking line. The two are intentionally separate codebases.
+`productbrain` is the original learning project and MVP, a full Next.js application with
+a home-grown agent framework. ProductIntel is the forward-looking line on a standard
+stack. The two are intentionally separate codebases.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

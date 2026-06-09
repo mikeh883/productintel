@@ -1,3 +1,9 @@
+import os
+
+# We route models through LiteLLM deliberately for provider portability (ADR 0006);
+# silence ADK's nudge toward native Gemini.
+os.environ.setdefault("ADK_SUPPRESS_GEMINI_LITELLM_WARNINGS", "true")
+
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 
