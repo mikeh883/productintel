@@ -20,10 +20,11 @@ It is developed in the open as a portfolio and learning project.
 Early, and intentionally so. Two vertical slices are built: **Knowledge**, a
 retrieval-augmented chat over a document corpus, and **Work**, a story backlog
 managed by a triage agent behind the project's first multi-agent coordinator.
-Tracing and enforced guardrails run through a callback seam on every call. This is
-not production software. Authentication and external observability export are
-decided but not yet built (see the ADRs). Every architecture decision is recorded
-under [`docs/adr/`](docs/adr/) as it is made.
+Tracing and enforced guardrails run through a callback seam on every call, and
+traces export to [Langfuse](https://langfuse.com) when keys are configured. This is
+not production software. Authentication is decided but not yet built (see the
+ADRs). Every architecture decision is recorded under [`docs/adr/`](docs/adr/) as
+it is made.
 
 ## What it does today
 
@@ -41,6 +42,12 @@ The routing itself is model-driven, using ADK's agent transfer
 ([ADR 0017](docs/adr/0017-coordinator-llm-delegation.md)), and every model and tool
 call from every agent is traced and budget-checked by the callback seam
 ([ADR 0016](docs/adr/0016-callback-seam-guardrails-tracing.md)).
+
+With Langfuse keys in `.env` (optional, free tier), every turn also exports a
+nested trace: coordinator, the agent it delegated to, each model call with token
+usage, and each tool call, grouped by chat session. ADK's native OpenTelemetry
+instrumentation provides the spans; the seam stamps the session and emits
+guardrail events ([ADR 0018](docs/adr/0018-adk-native-otel-langfuse-traces.md)).
 
 ## Architecture
 
@@ -156,8 +163,6 @@ that mattered most.
 
 - **Token-level streaming**: ADK currently emits the final answer as one SSE event;
   true incremental streaming uses ADK's streaming run config.
-- **Observability export**: OpenTelemetry + Langfuse attached to the existing callback
-  seam ([ADR 0013](docs/adr/0013-observability-otel-langfuse.md)).
 - **Durable sessions**: conversations currently live in memory; a database-backed
   session service survives restarts.
 - **Authentication**: JWT bearer when the product grows past a single user
