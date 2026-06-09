@@ -10,6 +10,7 @@ from google.adk.models.lite_llm import LiteLlm
 from . import seam
 from .config import settings
 from .retrieval import search
+from .work import work_agent
 
 
 def search_knowledge(query: str) -> str:
@@ -40,9 +41,39 @@ If the knowledge base does not contain the answer, say so plainly rather than gu
 # All model and tool calls pass through the callback seam (ADR 0016).
 knowledge_agent = LlmAgent(
     name="knowledge_agent",
+    description="Answers questions from the product knowledge base, with citations.",
     model=LiteLlm(model=settings.model),
     instruction=INSTRUCTION,
     tools=[search_knowledge],
+    before_model_callback=seam.before_model,
+    after_model_callback=seam.after_model,
+    before_tool_callback=seam.before_tool,
+    after_tool_callback=seam.after_tool,
+)
+
+
+COORDINATOR_INSTRUCTION = """You are the ProductIntel coordinator. Route each request
+to the right specialist instead of answering domain questions yourself:
+
+- knowledge_agent: questions about the product or its documentation, anything
+  answerable from the knowledge base.
+- work_agent: anything about the backlog or stories, including filing bug reports,
+  feature requests, listing stories, and triage.
+
+Answer directly only for trivial conversation such as greetings. If a request is
+ambiguous, pick the more likely specialist rather than asking."""
+
+
+# The first multi-agent composition (ADR 0017): a coordinator that delegates via
+# ADK's sub_agents transfer. ADK injects a `transfer_to_agent` tool automatically;
+# after a transfer the specialist owns the rest of the turn, and follow-up turns
+# resume with it until it transfers back.
+coordinator = LlmAgent(
+    name="coordinator",
+    description="Routes requests to the knowledge or work specialist.",
+    model=LiteLlm(model=settings.model),
+    instruction=COORDINATOR_INSTRUCTION,
+    sub_agents=[knowledge_agent, work_agent],
     before_model_callback=seam.before_model,
     after_model_callback=seam.after_model,
     before_tool_callback=seam.before_tool,

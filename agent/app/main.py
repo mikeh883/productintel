@@ -8,7 +8,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from pydantic import BaseModel
 
-from .agent import knowledge_agent
+from .agent import coordinator
 from .config import settings
 
 app = FastAPI(title="ProductIntel Agent Service")
@@ -22,7 +22,7 @@ app.add_middleware(
 # v0 uses in-memory sessions (ADR 0015). A DatabaseSessionService is the later upgrade.
 session_service = InMemorySessionService()
 runner = Runner(
-    agent=knowledge_agent,
+    agent=coordinator,
     app_name=settings.app_name,
     session_service=session_service,
 )
